@@ -1,0 +1,100 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Created on Sat Nov 23 13:24:59 2019
+
+@author: ianich
+"""
+
+import pandas as pd
+import numpy as np
+from sklearn.datasets import make_regression
+
+""" for testing
+#Create test data w/ known coefficients
+X, y, coef = make_regression(n_samples = 1000, n_features = 10, coef = True)
+test_data = pd.DataFrame(X)
+control_names = []
+for i in range(len(test_data.columns)):
+    control_names.append(f'control_{i}')
+test_data.columns = pd.Series(control_names)
+test_data.insert(0, 'outcome', y)
+test_data_coef = pd.DataFrame(
+        coef,
+        columns = ['coefficient',],
+        index = control_names,
+)
+"""
+
+#Create OLS regression class
+class OLSReg():
+    def __init__(self, dataframe, outcomes, controls, intercept = True):
+        self.dataframe = dataframe
+        self.intercept = intercept
+        self.outcomes = self.dataframe[outcomes]
+        self.controls = self.dataframe[controls]
+        if self.intercept:
+            self.controls.insert(0,'intercept',1)
+        self.y = np.matrix(self.outcomes.values).T
+        self.X = np.matrix(self.controls.values)
+        self.n = self.X.shape[0]
+        self.k = self.X.shape[1]
+        self.res = None
+        self.coef = None
+        self.fitted = None
+        self.se = None
+        self.HC1 = None
+        if self.n < self.k:
+            self.nk_check = False
+        else:
+            self.nk_check = True
+        try:
+            (self.X.T*self.X).I
+            self.pmc_check = True
+        except Exception as e:
+            self.pmc_check = e
+            
+    def ols(self):
+        X = self.X
+        y = self.y
+        n = self.n
+        k = self.k
+        
+        B = (X.T*X).I*X.T*y
+        self.coef = pd.DataFrame(
+                B,
+                columns = ['coefficient',],
+                index = self.controls.columns,
+        )
+        
+        P = X*(X.T*X).I*X.T
+        y_hat = P*y
+        self.fitted = y_hat
+        
+        M = (np.identity(n)-P)
+        e_hat = M*y
+        self.res = e_hat
+        
+        #calculat HC1 covariance matrix estimator
+        XtDX = 0
+        for i in range(n):
+            x = X[i]
+            e = e_hat[i,0]
+            e2 = e*e
+            product = x.T*x*e2
+            XtDX += product
+        self.HC1 = (n/(n-k))*(X.T*X).I*XtDX*(X.T*X).I
+        se = [np.sqrt(self.HC1[i,i]) for i in range(k)]
+        self.se = pd.DataFrame(
+                se, 
+                columns = ['Standard Errors (HC1)'],
+                index = self.controls.columns,
+        )
+
+""" for testing
+reg = OLSReg(test_data, 'outcome', control_names, intercept = True)
+reg.ols()
+print('ols\n', reg.coef)
+print('\ndummy\n', test_data_coef) 
+print(reg.se) 
+"""           

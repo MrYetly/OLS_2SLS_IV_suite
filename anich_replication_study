@@ -10,31 +10,32 @@ import pandas as pd
 import numpy as np
 from sklearn.datasets import make_regression
 
-""" for testing
 #Create test data w/ known coefficients
 X, y, coef = make_regression(n_samples = 1000, n_features = 10, coef = True)
 test_data = pd.DataFrame(X)
-control_names = []
+control_vars = []
 for i in range(len(test_data.columns)):
-    control_names.append(f'control_{i}')
-test_data.columns = pd.Series(control_names)
+    control_vars.append(f'control_{i}')
+test_data.columns = pd.Series(control_vars)
 test_data.insert(0, 'outcome', y)
 test_data_coef = pd.DataFrame(
         coef,
         columns = ['coefficient',],
-        index = control_names,
+        index = control_vars,
 )
-"""
+
 
 #Create OLS regression class
 class OLSReg():
     def __init__(self, dataframe, outcomes, controls, intercept = True):
-        self.dataframe = dataframe
         self.intercept = intercept
-        self.outcomes = self.dataframe[outcomes]
-        self.controls = self.dataframe[controls]
+        self.dataframe = dataframe.copy()
+        self.control_names = controls[:]
         if self.intercept:
-            self.controls.insert(0,'intercept',1)
+            self.dataframe.insert(0, 'intercept', 1)
+            self.control_names.append('intercept')
+        self.outcomes = self.dataframe[outcomes]
+        self.controls = self.dataframe[self.control_names]
         self.y = np.matrix(self.outcomes.values).T
         self.X = np.matrix(self.controls.values)
         self.n = self.X.shape[0]
@@ -43,9 +44,14 @@ class OLSReg():
         self.coef = None
         self.fitted = None
         self.se = None
+        self.cluster_se = None
         self.HC1 = None
+        self.cluster_HC1 = None
+        self.R2 = None
+        self.groups = None
         if self.n < self.k:
             self.nk_check = False
+            print('Warning: n < k')
         else:
             self.nk_check = True
         try:
@@ -53,48 +59,107 @@ class OLSReg():
             self.pmc_check = True
         except Exception as e:
             self.pmc_check = e
+            print(f'Warning: {e}')
             
     def ols(self):
-        X = self.X
-        y = self.y
-        n = self.n
-        k = self.k
+        if self.pmc_check != True:
+            print('error: perfect multicolinearity')
+        else:
+            X = self.X
+            y = self.y
+            n = self.n
+            k = self.k
+            
+            B = (X.T*X).I*X.T*y
+            self.coef = pd.DataFrame(
+                    B,
+                    columns = ['coefficient',],
+                    index = self.controls.columns,
+            )
+            
+            P = X*(X.T*X).I*X.T
+            y_hat = P*y
+            self.fitted = y_hat
+            
+            M = (np.identity(n)-P)
+            e_hat = M*y
+            self.res = e_hat
+            
+            #calculate HC1 covariance matrix estimator/standard errors
+            XtDX = 0
+            for i in range(n):
+                x = X[i]
+                e = e_hat[i,0]
+                e2 = e*e
+                product = x.T*x*e2
+                XtDX += product
+            self.HC1 = (n/(n-k))*(X.T*X).I*XtDX*(X.T*X).I
+            se = [np.sqrt(self.HC1[i,i]) for i in range(k)]
+            self.se = pd.DataFrame(
+                    se, 
+                    columns = ['Standard Errors (HC1)'],
+                    index = self.controls.columns,
+            )
+    def cluster_ols(self, grouping_var):
+        if self.pmc_check != True:
+            print('error: perfect multicolinearity')
+        else:
+            self.ols()
         
-        B = (X.T*X).I*X.T*y
-        self.coef = pd.DataFrame(
-                B,
-                columns = ['coefficient',],
-                index = self.controls.columns,
-        )
+            #calculate cluster robust HC1/standard errors
+            self.groups = {}
+            for group in self.dataframe[grouping_var].unique():
+                all_vars = list(self.controls.columns)
+                all_vars.append(self.outcomes.name)
+                group_df = self.dataframe.loc[
+                        self.dataframe[grouping_var] == group,
+                        all_vars,
+                ].copy()
+                self.groups[f'{group}'] = group_df
+            n = self.n
+            k = self.k
+            G = len(groups)
+            Omega_hat = np.zeros((k,k))
+            for group, group_df in self.groups.items():
+                X = np.matrix(group_df[list(self.controls.columns)].values)
+                y = np.matrix(group_df[self.outcomes.name].values).T
+                try:
+                    M = (np.identity(X.shape[0]) - X*(X.T*X).I*X.T)
+                    e_hat = M*y
+                    product = X.T*e_hat*e_hat.T*X
+                    Omega_hat += product
+                except Exception as e:
+                    print(group, '\n', e)
+            X = self.X
+            a = ((n-1)/(n-k))*(G/(G-1))
+            cluster_HC1 = a*(X.T*X).I*Omega_hat*(X.T*X).I
+            self.cluster_HC1 = cluster_HC1
+            cluster_se = [np.sqrt(self.cluster_HC1[i,i]) for i in range(k)]
+            self.cluster_se = pd.DataFrame(
+                    cluster_se, 
+                    columns = ['Cluster Robust Standard Errors (HC1)'],
+                    index = self.controls.columns,
+            )
         
-        P = X*(X.T*X).I*X.T
-        y_hat = P*y
-        self.fitted = y_hat
         
-        M = (np.identity(n)-P)
-        e_hat = M*y
-        self.res = e_hat
         
-        #calculat HC1 covariance matrix estimator
-        XtDX = 0
-        for i in range(n):
-            x = X[i]
-            e = e_hat[i,0]
-            e2 = e*e
-            product = x.T*x*e2
-            XtDX += product
-        self.HC1 = (n/(n-k))*(X.T*X).I*XtDX*(X.T*X).I
-        se = [np.sqrt(self.HC1[i,i]) for i in range(k)]
-        self.se = pd.DataFrame(
-                se, 
-                columns = ['Standard Errors (HC1)'],
-                index = self.controls.columns,
-        )
+        
+        
+        
+        
+        
 
-""" for testing
-reg = OLSReg(test_data, 'outcome', control_names, intercept = True)
+
+reg = OLSReg(test_data, 'outcome', control_vars, intercept = True)
 reg.ols()
 print('ols\n', reg.coef)
 print('\ndummy\n', test_data_coef) 
 print(reg.se) 
-"""           
+
+#insert grouping variable if necessary
+groups = [round(i, -2) for i in range(1, test_data.shape[0]+1)]
+test_data.insert(0, 'groups', groups)
+cluster_reg = OLSReg(test_data, 'outcome', control_vars, intercept = True)
+cluster_reg.cluster_ols(grouping_var = 'groups')
+print('\ncluster\n', cluster_reg.coef)
+print(cluster_reg.cluster_se)

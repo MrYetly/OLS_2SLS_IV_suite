@@ -10,7 +10,8 @@ import pandas as pd
 import numpy as np
 from sklearn.datasets import make_regression
 from scipy.stats import f
-
+"""
+#testing setup
 #Create test data w/ known coefficients
 X, y, coef = make_regression(n_samples = 1000, n_features = 10, coef = True)
 test_data = pd.DataFrame(X)
@@ -24,6 +25,7 @@ test_data_coef = pd.DataFrame(
         columns = ['coefficient',],
         index = control_vars,
 )
+"""
 
 class Regression():
     def __init__(self, dataframe):
@@ -457,6 +459,8 @@ class Regression():
                     index = self.controls.columns,
             )
                 
+
+#OLS testing
 """
 reg = Regression(test_data)
 reg.ols('outcome', control_vars, intercept = True)
@@ -466,7 +470,49 @@ print(reg.se)
 F, p = reg.f_test(test_type = 'null', null_controls = ['control_0', 'control_1'])
 print(f'\nF-stat: {F}\n', f'p_value: {p}')
 """
+
+#IV testing
 """
+#attemping tocreating endogenous variable and instrument
+instrument = test_data['control_0'].copy()
+instrument.name = 'instrument'
+for i, item in instrument.iteritems():
+    c = np.random.random()
+    instrument[i] = instrument[i]*c
+inst_endog = pd.DataFrame(
+        {
+                instrument.name: instrument,
+                'control_0': test_data['control_0'],
+        }
+)
+res_reg = Regression(inst_endog)
+res_reg.ols('control_0', ['instrument',])
+res = res_reg.res
+print(res[0:2,0])
+instrument = pd.Series(list(res.flat), name = 'instrument')
+print(inst_endog[0:2])
+inst_endog.drop(columns = 'instrument', inplace = True)
+inst_endog.insert(0, instrument.name, instrument)
+print(inst_endog[0:2])
+inst_endog_reg = Regression(inst_endog)
+inst_endog_reg.ols('control_0', ['instrument',])
+print('\ninstrument against endog\n')
+print(inst_endog_reg.coef)
+
+inst_out = pd.DataFrame(
+        {
+                instrument.name: instrument,
+                'outcome': test_data['outcome'],
+        }
+)
+inst_out = Regression(inst_out)
+inst_out.ols('outcome', ['instrument',])
+print('\ninstrument against outcomes\n')
+print(inst_out.coef)
+test_data.insert(0, instrument.name, instrument)
+"""
+"""
+#General IV testing
 iv = Regression(test_data)
 iv.iv(
       'outcome',
@@ -479,9 +525,12 @@ print('\nIV\n',iv.coef, '\nfirst stage\n', iv.fs_coef, '\n', iv.se)
 print(iv.fs_f_stat)
 """
 
+#Group Testing
+"""
 #insert grouping variable if necessary
 groups = [round(i, -2) for i in range(1, test_data.shape[0]+1)]
 test_data.insert(0, 'groups', groups)
+"""
 """
 cluster_reg = Regression(test_data)
 cluster_reg.cluster_ols(
@@ -498,6 +547,7 @@ F, p = cluster_reg.f_test(
 )
 print(f'\nF-stat: {F}\n', f'p_value: {p}')
 """
+"""
 cluster_iv = Regression(test_data)
 cluster_iv.cluster_iv(
         'outcome', 
@@ -509,3 +559,4 @@ cluster_iv.cluster_iv(
 )
 print('\ncluster\n', cluster_iv.coef)
 print(cluster_iv.cluster_se, '\n', cluster_iv.se)
+"""

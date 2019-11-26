@@ -26,8 +26,69 @@ data = raw['STAR_Students']
 """
 Percentiles
 
+The tests were tailored to each grade
+level. Because there are no natural units for the test results, I
+scaled the test scores into percentile ranks. Specifically, in each
+grade level the regular and regular/aide students were pooled
+together, and students were assigned percentile scores based on
+their raw test scores, ranging from 0 (lowest score) to 100 (highest
+score). A separate percentile distribution was generated for each
+subject test (e.g., Math-SAT, Reading-SAT, Word-SAT, etc.). For
+each test I then determined where in the distribution of the
+regular-class students every student in the small classes would
+fall, and the students in the small classes were assigned these
+percentile scores. Finally, to summarize overall achievement, the
+average of the three SAT percentile rankings was calculated. If
+the performance of students in the small classes was distributed
+in the same way as performance of students in the regular classes,
+the average percentile score for students in the small classes
+would be 50.
+
+Formally, denote the cumulative distribution of scores on test j (denoted
+Tj) of students in the regular and regular/aide classes as FR(Tj) 5 prob [TRi
+j ,
+Tj] 5 yj. For each student i in a small class, we then calculated FR(TSi
+j ) 5 ySi
+j .
+Naturally, the distribution of yj for students in regular classes follows a uniform
+distribution. We then calculated the average of the three (or two for BSF)
+percentile rankings for each student. If one subtest score was missing, we took the
+average of the two percentiles that were available; and if two were missing, we
+used the percentile score corresponding to the only available test.
 """
-#calculate percentiles
+#calculate percentiles for each test
+for i in ['k', '1', '2', '3']:
+    tests = [
+            f'g{i}treadss',
+            f'g{i}tmathss',
+    ]
+    for test in tests:
+        raw_scores = data[[test, f'g{i}classtype']].loc[data[test].notna() == True]
+        percentiles = pd.DataFrame(
+                index = raw_scores.index,
+                columns = [f'{test}_pc',],
+        )
+        
+        #calculate reg and reg + aide distribution
+        reg_scores = raw_scores.loc[raw_scores[f'g{i}classtype'] != 'SMALL CLASS']
+        n = reg_scores[test].count()
+        for j, row in reg_scores.iterrows():
+            below = reg_scores.loc[reg_scores[test] < row[test]]
+            below = below[test].count()
+            percentile = below/n
+            percentiles[f'{test}_pc'][j] = percentile
+        
+        #fit small scores into distribution
+        small_scores = raw_scores.loc[raw_scores[f'g{i}classtype'] == 'SMALL CLASS']
+        for j, row in small_scores.iterrows():
+            below = reg_scores.loc[reg_scores[test] < row[test]]
+            below = below[test].count()
+            percentile = below/n
+            percentiles[f'{test}_pc'][j] = percentile
+        
+        data = pd.concat([data, percentiles], axis = 1, sort = True)
+        
+#calculate average percentiles  
 
 """
 Table I
@@ -78,7 +139,6 @@ for i in ['k', '1', '2', '3']:
     keep = data.loc[data[columns[len(columns)-1]].notna() == True]
     for column in columns[:-1]:
         keep = keep.loc[keep[column].isna() == True]
-    keep = keep[]
     table_data[f'enter_{i}'] = keep
     
 

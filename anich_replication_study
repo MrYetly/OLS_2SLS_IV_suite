@@ -52,6 +52,8 @@ class Regression():
         self.cluster_se = None
         self.cluster_HC1 = None
         #2SLS attributes
+        self.controls_fitted = None
+        self.X_hat = None
         self.endog_name = None
         self.endog = None
         self.endog_fitted = None
@@ -141,7 +143,7 @@ class Regression():
             R2 = 1 - (sse/mdsquare)
             self.R2 = R2
                         
-    def cluster_ols(self, outcomes, controls, grouping_var, intercept = True):
+    def cluster_ols(self, outcomes, controls, grouping_var = None, intercept = True):
         self.ols(outcomes, controls, intercept = True)
         if self.pmc_check == True and self.nk_check == True:
             #calculate cluster robust HC1/standard errors
@@ -239,15 +241,25 @@ class Regression():
             p = 1 - f.cdf(F, K-1, N-K)
             return F, p
             
-    def iv(self, outcomes, controls, endog = None, instrument = None, intercept = True):
+    def iv(self, 
+           outcomes, 
+           controls, 
+           endog = None, 
+           instrument = None, 
+           intercept = True
+           ):
         #sort info into attributes
+        self.outcomes = self.dataframe[outcomes]
+        self.y = np.matrix(self.outcomes.values).T
         self.control_names = controls[:]
         if intercept:
             self.intercept = True
             self.dataframe.insert(0, 'intercept', 1)
             self.control_names.append('intercept')
+        self.controls = self.dataframe[self.control_names]
+        self.X = np.matrix(self.controls.values)
         self.endog_name = endog
-        self.endog = self.dataframe[endog]
+        self.endog = self.dataframe[self.endog_name]
         self.instrument_name = instrument
         self.instrument = self.dataframe[self.instrument_name]
         exog = self.control_names[:]
@@ -270,7 +282,7 @@ class Regression():
             self.pmc_check = True
         except Exception as e:
             self.pmc_check = e
-        #test invertability of (X'X)^-1
+        #test invertability of (Z'Z)^-1
         if self.pmc_check != True:
             print(f'error first stage: {self.pmc_check}')
         elif self.nk_check == False:
@@ -278,21 +290,25 @@ class Regression():
         else:
             #begin first stage regression
             Z = self.Z 
-            X = np.matrix(self.endog.values).T
-            
-            fs_coef = (Z.T*Z).I*Z.T*X
+            X_endog = np.matrix(self.endog.values).T
+
+            #first stage coefficient
+            B_fs = (Z.T*Z).I*Z.T*X_endog
             self.fs_coef = pd.DataFrame(
-                    fs_coef,
+                    B_fs,
                     columns = ['first stage coefficient',],
                     index = self.fs_controls.columns,
             )
-            X_hat = Z*(Z.T*Z).I*Z.T*X
-            fs_res = X-X_hat
+
+            #endogenous fitted values and first stage residuals
+            P_z = Z*(Z.T*Z).I*Z.T
+            X_endog_hat = P_z*X_endog
+            fs_res = (np.identity(n_fs) - P_z)*X_endog
             self.endog_fitted = pd.Series(
-                    X_hat.flat,
+                    list(X_endog_hat.flat),
                     name = f'{self.endog_name}_fitted',
             )
-            
+    
             #calculate first stage f-stat
             q = 1
             #sum unrestricted residuals
@@ -301,9 +317,9 @@ class Regression():
                 square = fs_res[i,0]**2
                 sse_ur += square
             #create and sum restricted residuals
-            X_r = np.matrix(self.dataframe[list(self.exog.columns)].values)
-            M_r = np.identity(n_fs) - X_r*(X_r.T*X_r).I*X_r.T
-            res_r = M_r*X
+            Z_r = np.matrix(self.dataframe[list(self.exog.columns)].values)
+            M_r = np.identity(n_fs) - Z_r*(Z_r.T*Z_r).I*Z_r.T
+            res_r = M_r*X_endog
             sse_r = 0
             for i in range(n_fs):
                 square = res_r[i,0]**2
@@ -312,26 +328,25 @@ class Regression():
             F = ((sse_r - sse_ur)/sse_ur)*((n_fs-k_fs)/q)
             self.fs_f_stat = F
             
-            
+        
             #begin second stage regression
-            controls = self.exog.copy()
-            controls.insert(
+            controls_fitted = self.controls.copy()
+            controls_fitted.drop(columns = self.endog_name, inplace = True)
+            controls_fitted.insert(
                     0,
                     self.endog_fitted.name,
                     self.endog_fitted,
             )
-            self.controls = controls
-            self.X = np.matrix(self.controls.values)
-            self.outcomes = self.dataframe[outcomes]
-            self.y = np.matrix(self.outcomes.values).T
-            self.n = self.X.shape[0]
-            self.k = self.X.shape[1]
+            self.controls_fitted = controls_fitted
+            self.X_hat = np.matrix(self.controls_fitted.values)
+            self.n = self.X_hat.shape[0]
+            self.k = self.X_hat.shape[1]
             if self.n < self.k:
                 self.nk_check = False
             else:
                 self.nk_check = True
             try:
-                (self.X.T*self.X).I
+                (self.X_hat.T*self.X_hat).I
                 self.pmc_check = True
             except Exception as e:
                 self.pmc_check = e
@@ -342,41 +357,42 @@ class Regression():
                 print('error second stage: number of observations < number of controls')
             else:
                 #note: X here is the exogenous vars plus fitted endogenous var
-                X = self.X
+                X_hat = self.X_hat
                 y = self.y
                 n = self.n
                 k = self.k
                 
-                B = (X.T*X).I*X.T*y
+                B = (X_hat.T*X_hat).I*X_hat.T*y
                 self.coef = pd.DataFrame(
                         B,
-                        columns = ['coefficient',],
-                        index = self.controls.columns,
+                        columns = ['2SLS coefficient',],
+                        index = self.controls_fitted.columns,
                 )
                 
-                P = X*(X.T*X).I*X.T
+                P = X_hat*(X_hat.T*X_hat).I*X_hat.T
                 y_hat = P*y
                 self.y_fitted = y_hat
                 
-                M = (np.identity(n)-P)
+                M = np.identity(n)-P
                 e_hat = M*y
                 self.res = e_hat
                 
                 #calculate 2SLS HC1 covariance matrix estimator/standard errors
                 XtDX = 0
                 for i in range(n):
-                    x = X[i]
+                    x = X_hat[i]
                     e = e_hat[i,0]
                     e2 = e*e
                     product = x.T*x*e2
                     XtDX += product
-                self.HC1 = (n/(n-k))*(X.T*X).I*XtDX*(X.T*X).I
+                self.HC1 = (n/(n-k))*(X_hat.T*X_hat).I*XtDX*(X_hat.T*X_hat).I
                 se = [np.sqrt(self.HC1[i,i]) for i in range(k)]
                 self.se = pd.DataFrame(
                         se, 
                         columns = ['2SLS Standard Errors (HC1)'],
-                        index = self.controls.columns,
+                        index = self.controls_fitted.columns,
                 )
+                
                 #calculate R-squared
                 sse = 0
                 for i in range(n):
@@ -390,8 +406,58 @@ class Regression():
                     mdsquare += square
                 R2 = 1 - (sse/mdsquare)
                 self.R2 = R2
+    
+    def cluster_iv(self,
+                   outcomes, 
+                   controls, 
+                   endog = None, 
+                   instrument = None, 
+                   grouping_var = None, 
+                   intercept = True,
+                   ):
+        self.iv(outcomes, 
+                controls, 
+                endog = endog, 
+                instrument = instrument, 
+                intercept = True
+        )
+        if self.pmc_check == True and self.nk_check == True:
+            #calculate cluster robust HC1/standard errors
+            self.groups = {}
+            all_vars = self.controls_fitted.copy()
+            all_vars.insert(0, self.outcomes.name, self.outcomes)
+            all_vars.insert(0, grouping_var, self.dataframe[grouping_var])
+            for group in all_vars[grouping_var].unique():
+                group_df = all_vars.loc[all_vars[grouping_var] == group].copy()
+                self.groups[f'{group}'] = group_df
+            n = self.n
+            k = self.k
+            G = len(self.groups)
+            self.G = G
+            Omega_hat = np.zeros((k,k))
+            #for loop for Omega_hat summation
+            for group, group_df in self.groups.items():
+                X = np.matrix(group_df[list(self.controls_fitted.columns)].values)
+                y = np.matrix(group_df[self.outcomes.name].values).T
+                try:
+                    M = (np.identity(X.shape[0]) - X*(X.T*X).I*X.T)
+                    e_hat = M*y
+                    product = X.T*e_hat*e_hat.T*X
+                    Omega_hat += product
+                except Exception as e:
+                    print(f'group: {group}\n', e)
+            X_hat = self.X_hat
+            a = ((n-1)/(n-k))*(G/(G-1))
+            cluster_HC1 = a*(X_hat.T*X_hat).I*Omega_hat*(X_hat.T*X_hat).I
+            self.cluster_HC1 = cluster_HC1
+            cluster_se = [np.sqrt(self.cluster_HC1[i,i]) for i in range(k)]
+            self.cluster_se = pd.DataFrame(
+                    cluster_se, 
+                    columns = ['2SLS Cluster Robust Standard Errors (HC1)'],
+                    index = self.controls.columns,
+            )
                 
-
+"""
 reg = Regression(test_data)
 reg.ols('outcome', control_vars, intercept = True)
 print('ols\n', reg.coef, '\nR2\n', reg.R2)
@@ -400,9 +466,23 @@ print(reg.se)
 F, p = reg.f_test(test_type = 'null', null_controls = ['control_0', 'control_1'])
 print(f'\nF-stat: {F}\n', f'p_value: {p}')
 """
+"""
+iv = Regression(test_data)
+iv.iv(
+      'outcome',
+      control_vars,
+      endog = 'control_0',
+      instrument = 'control_1',
+      intercept = True,
+)
+print('\nIV\n',iv.coef, '\nfirst stage\n', iv.fs_coef, '\n', iv.se)
+print(iv.fs_f_stat)
+"""
+
 #insert grouping variable if necessary
 groups = [round(i, -2) for i in range(1, test_data.shape[0]+1)]
 test_data.insert(0, 'groups', groups)
+"""
 cluster_reg = Regression(test_data)
 cluster_reg.cluster_ols(
         'outcome',
@@ -418,12 +498,14 @@ F, p = cluster_reg.f_test(
 )
 print(f'\nF-stat: {F}\n', f'p_value: {p}')
 """
-iv = Regression(test_data)
-iv.iv(
-      'outcome',
-      control_vars,
-      endog = 'control_0',
-      instrument = 'control_1',
-      intercept = True
+cluster_iv = Regression(test_data)
+cluster_iv.cluster_iv(
+        'outcome', 
+        control_vars, 
+        endog = 'control_0', 
+        instrument = 'control_1', 
+        grouping_var = 'groups', 
+        intercept = True,
 )
-print('\nIV\n',iv.coef, '\nfirst stage\n', iv.fs_coef)
+print('\ncluster\n', cluster_iv.coef)
+print(cluster_iv.cluster_se, '\n', cluster_iv.se)

@@ -139,9 +139,15 @@ for i, row in reference_df.iterrows():
             attrition['attrition'][i] = 0
 data = pd.concat([data, attrition], axis = 1, sort = True)
 
-            
-        
-        
+#calculate age in '85
+age_85 = 1985 - data[['birthyear']] 
+data.insert(0, 'age_85', age_85)
+
+#calculate White/Asian dummy
+wa = data['race'].copy()
+wa.replace(['white', 'asian'], 1, inplace = True)
+wa.where(wa == 1, other = 0, inplace = True)
+data.insert(0, 'white/asian', wa)
 
 """
 Table I
@@ -154,23 +160,19 @@ Variables Needed:
             - 'gkfreelunch'
     - White/Asian
         - STAR_Students    
-            - 'race'
+            - 'white/asian'
     - Age in 1985
         - STAR_Student
-            - 'birthmonth'
-            - 'birthday'
-            - 'birthyear'
+            - 'age_85'
     - Attrition Rate
         - STAR_Students
-            - if they left the program at any time
+            - 'attrition
     - class size in year
         - STAR_Students
             - 'gkclasssize'
     - Percentile score in year
         - STAR_Students: math reading word
-            - 'gktmathss'
-            - 'gktreadss'
-            - 'gktwordskillss'
+            - 'gk_avg_pc'
         
 
 For Groups by year:
@@ -187,6 +189,18 @@ P-value:
 
 table_i_data = {}
 columns = []
+label_grade = {
+            'k': 'kindergarten',
+            '1': 'first grade',
+            '2': 'second grade',
+            '3': 'third grade',
+    }
+label_type = {
+        'Regular/Aide': 'REGULAR + AIDE CLASS',
+        'Small': 'SMALL CLASS',
+        'Regular': 'REGULAR CLASS',
+        }
+sub_tables = {}
 for i in ['k', '1', '2', '3']:
     
     #split up data by study entrance year
@@ -197,7 +211,38 @@ for i in ['k', '1', '2', '3']:
         keep = keep.loc[keep[column].isna() == True]
     table_i_data[f'enter_{i}'] = keep
     
-    
+    #create sub-tables
+    label_vars = {
+            'Free lunch': f'g{i}freelunch',
+            'White/Asian': 'white/asian',
+            'Age in 1985': 'age_85',
+            'Attrition rate': 'attrition',
+            f'Class size in {label_grade[i]}': f'g{i}classsize',
+            f'Percentile score in {label_grade[i]}': f'g{i}_avg_pc',
+        }
+    sub_table = pd.DataFrame(
+            columns = [
+                    'Variable',
+                    'Small',
+                    'Regular',
+                    'Regular/Aide',
+                    'Joint P-value',
+            ]
+    )
+    sub_table['Variable'] = list(label_vars.keys())
+    group_df = table_i_data[f'enter_{i}']
+    for label_c, class_type in label_type.items():  
+        type_df = group_df.loc[group_df[f'g{i}classtype'] == class_type]
+        for label_v, var in label_vars.items():
+            if label_v == 'Free lunch':
+                n = type_df.shape[0]
+                count = type_df[var].loc[type_df[var] == 'FREE LUNCH'].count()
+                entry = count/n
+            else:
+                entry = type_df[var].mean()
+            sub_table.loc[sub_table['Variable'] == label_v, label_c] = entry
+    sub_tables[f'enter_{i}'] = sub_table
+
     
 
      

@@ -62,6 +62,10 @@ for i in ['k', '1', '2', '3']:
             f'g{i}treadss',
             f'g{i}tmathss',
     ]
+    test_pc = []
+    #wordskills test not present in third grade
+    if i != '3':
+        tests.append(f'g{i}wordskillss')
     for test in tests:
         raw_scores = data[[test, f'g{i}classtype']].loc[data[test].notna() == True]
         percentiles = pd.DataFrame(
@@ -87,8 +91,57 @@ for i in ['k', '1', '2', '3']:
             percentiles[f'{test}_pc'][j] = percentile
         
         data = pd.concat([data, percentiles], axis = 1, sort = True)
+        test_pc.append(f'{test}_pc')
+    
+    #calculate average percentiles for each year
+    all_scores = data[test_pc]
+    avg_percentile = pd.DataFrame(
+            index = all_scores.index,
+            columns = [f'g{i}_avg_pc',],
+    )
+    for k, row in all_scores.iterrows():
+        if np.all(row.isna()):
+            continue
+        else:
+            avg = row.mean()
+            avg_percentile[f'g{i}_avg_pc'][k] = avg
+    data = pd.concat([data, avg_percentile], axis = 1, sort = True)
         
-#calculate average percentiles  
+#calculate attrition dummy (left = 1, never left = 0)
+reference_df = data[['gkclasstype',
+                    'g1classtype',
+                    'g2classtype',
+                    'g3classtype',
+]]
+attrition = pd.DataFrame(
+        index = reference_df.index,
+        columns = ['attrition',],
+)
+for i, row in reference_df.iterrows():
+    if np.all(row.notna()):
+        attrition['attrition'][i] = 0
+    else:
+        test = row.isna()
+        enter = False
+        leave = False
+        for j, item in row.notna().iteritems():
+            if enter == False:
+                if item == True:
+                    enter = True
+            elif leave == False:
+                if item == False:
+                    leave = True
+            else:
+                break
+        if leave == True:
+            attrition['attrition'][i] = 1
+        else:
+            attrition['attrition'][i] = 0
+data = pd.concat([data, attrition], axis = 1, sort = True)
+
+            
+        
+        
 
 """
 Table I
@@ -131,15 +184,20 @@ P-value:
     - for anova F-test
 """
 #recreate Table I
-table_data = {}
+
+table_i_data = {}
 columns = []
 for i in ['k', '1', '2', '3']:
+    
+    #split up data by study entrance year
     class_type = f'g{i}classtype'
     columns.append(class_type)
     keep = data.loc[data[columns[len(columns)-1]].notna() == True]
     for column in columns[:-1]:
         keep = keep.loc[keep[column].isna() == True]
-    table_data[f'enter_{i}'] = keep
+    table_i_data[f'enter_{i}'] = keep
+    
+    
     
 
      

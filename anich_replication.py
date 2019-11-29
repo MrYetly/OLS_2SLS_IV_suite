@@ -146,8 +146,24 @@ data.insert(0, 'age_85', age_85)
 #calculate White/Asian dummy
 wa = data['race'].copy()
 wa.replace(['white', 'asian'], 1, inplace = True)
-wa.where(wa == 1, other = 0, inplace = True)
+wa.replace(
+        [
+                'black',
+                'hispanic',
+                'NATIVE AMERICAN', 
+                'other',
+        ],
+        0,
+        inplace = True,
+)
 data.insert(0, 'white/asian', wa)
+
+#calculate free lunch dummy
+for i in ['k', '1', '2', '3']:
+    dummy = data[f'g{i}freelunch'].copy()
+    dummy.replace('FREE LUNCH', 1, inplace = True)
+    dummy.replace('NON-FREE LUNCH', 0, inplace = True)
+    data.insert(0, f'{i}_freelunch', dummy)
 
 """
 Table I
@@ -211,9 +227,9 @@ for i in ['k', '1', '2', '3']:
         keep = keep.loc[keep[column].isna() == True]
     table_i_data[f'enter_{i}'] = keep
     
-    #create sub-tables
+    #create sub-table
     label_vars = {
-            'Free lunch': f'g{i}freelunch',
+            'Free lunch': f'{i}_freelunch',
             'White/Asian': 'white/asian',
             'Age in 1985': 'age_85',
             'Attrition rate': 'attrition',
@@ -230,17 +246,24 @@ for i in ['k', '1', '2', '3']:
             ]
     )
     sub_table['Variable'] = list(label_vars.keys())
+    
+    #insert means into sub-table
     group_df = table_i_data[f'enter_{i}']
-    for label_c, class_type in label_type.items():  
-        type_df = group_df.loc[group_df[f'g{i}classtype'] == class_type]
+    for label_c, class_t in label_type.items():  
+        type_df = group_df.loc[group_df[f'g{i}classtype'] == class_t]
         for label_v, var in label_vars.items():
-            if label_v == 'Free lunch':
-                n = type_df.shape[0]
-                count = type_df[var].loc[type_df[var] == 'FREE LUNCH'].count()
-                entry = count/n
-            else:
-                entry = type_df[var].mean()
+            entry = type_df[var].mean()
             sub_table.loc[sub_table['Variable'] == label_v, label_c] = entry
+    #insert f-test p-values
+    p_func = Regression(group_df)
+    for label_v, var in label_vars.items():
+        F, p = p_func.f_test(
+                'anova',
+                var_to_analyze = var,
+                grouping_var = class_type,
+        )
+        entry = p
+        sub_table.loc[sub_table['Variable'] == label_v, 'Joint P-value'] = entry
     sub_tables[f'enter_{i}'] = sub_table
 
     

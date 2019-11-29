@@ -186,51 +186,62 @@ class Regression():
             )
     
     def f_test(self, test_type, null_controls = None, var_to_analyze = None, grouping_var = None):
-        if self.pmc_check != True:
-            print('No stored data. Run a regression method first.')
-        elif null_controls == None and (var_to_analyze == None and grouping_var == None):
+        if null_controls == None and (var_to_analyze == None and grouping_var == None):
             print('error: no test parameters specified')
         elif test_type == 'null':
-            n = self.n
-            k = self.k
-            q = len(null_controls)
-            #sum unrestricted residuals
-            sse_ur = 0
-            for i in range(n):
-                square = self.res[i,0]**2
-                sse_ur += square
-            #create and sum restricted residuals
-            restricted_controls = set(self.control_names)
-            null_controls = set(null_controls)
-            restricted_controls = restricted_controls - null_controls
-            restricted_controls = list(restricted_controls)
-            X_r = np.matrix(self.dataframe[restricted_controls].values)
-            M_r = np.identity(n) - X_r*(X_r.T*X_r).I*X_r.T
-            y = self.y
-            res_r = M_r*y
-            sse_r = 0
-            for i in range(n):
-                square = res_r[i,0]**2
-                sse_r += square
-            #calculate F-stat, p-value
-            F = ((sse_r - sse_ur)/sse_ur)*((n-k)/q)
-            p = 1 - f.cdf(F, q, n-k)
-            return F, p
+            if self.pmc_check != True:
+                print('No stored data. Run a regression method first.')
+            else:
+                n = self.n
+                k = self.k
+                q = len(null_controls)
+                #sum unrestricted residuals
+                sse_ur = 0
+                for i in range(n):
+                    square = self.res[i,0]**2
+                    sse_ur += square
+                #create and sum restricted residuals
+                restricted_controls = set(self.control_names)
+                null_controls = set(null_controls)
+                restricted_controls = restricted_controls - null_controls
+                restricted_controls = list(restricted_controls)
+                X_r = np.matrix(self.dataframe[restricted_controls].values)
+                M_r = np.identity(n) - X_r*(X_r.T*X_r).I*X_r.T
+                y = self.y
+                res_r = M_r*y
+                sse_r = 0
+                for i in range(n):
+                    square = res_r[i,0]**2
+                    sse_r += square
+                #calculate F-stat, p-value
+                F = ((sse_r - sse_ur)/sse_ur)*((n-k)/q)
+                p = 1 - f.cdf(F, q, n-k)
+                return F, p
         elif test_type == 'anova':
             dataframe = self.dataframe[[var_to_analyze, grouping_var]].copy()
-            N = self.n
-            K = len(dataframe[grouping_var].unique())
+            N = dataframe[var_to_analyze].count()
+            #define groups
+            groups = list(
+                    dataframe[grouping_var].loc[
+                            dataframe[grouping_var].notna() == True
+                    ].unique()
+            )
+            K = len(groups)
             sample_mean = dataframe[var_to_analyze].mean()
             #calculate relevant sums
             gm_sm_sq_sum = 0
             in_group_sq_sum = 0
-            for group in dataframe[grouping_var].unique():
+            for group in groups:
                 group_df = dataframe.loc[dataframe[grouping_var] == group]
                 group_mean = group_df[var_to_analyze].mean()
                 n_g = group_df[var_to_analyze].count()
                 #for loop to sum in-group mean difference squared
                 in_group_sq = 0
-                for i, item in group_df[var_to_analyze].iteritems():
+                column = group_df.loc[
+                        group_df[var_to_analyze].notna() == True,
+                        var_to_analyze
+                ]
+                for i, item in column.iteritems():
                     y = item
                     mean_dif_sq = (y - group_mean)**2
                     in_group_sq += mean_dif_sq

@@ -69,13 +69,24 @@ class Regression():
         self.fs_f_stat = None
     
     def ols(self, outcomes, controls, intercept = True):
+        #need to add auto drop for pmc failure
+        self.nk_check = None
+        self.pmc_check = None
         self.control_names = controls[:]
         if intercept:
             self.intercept = True
-            self.dataframe.insert(0, 'intercept', 1)
             self.control_names.append('intercept')
-        self.outcomes = self.dataframe[outcomes]
-        self.controls = self.dataframe[self.control_names]
+            if 'intercept' not in list(self.dataframe.columns):
+                self.dataframe.insert(
+                        len(self.dataframe.columns),
+                        'intercept',
+                        1
+                )
+        #only include observations that have an outcome
+        outcomes = self.dataframe[outcomes]
+        outcomes = outcomes.loc[outcomes.notna() == True]
+        self.outcomes = outcomes
+        self.controls = self.dataframe.loc[self.outcomes.index, self.control_names]
         self.y = np.matrix(self.outcomes.values).T
         self.X = np.matrix(self.controls.values)
         self.n = self.X.shape[0]
@@ -139,8 +150,7 @@ class Regression():
             mdsquare = 0
             y_mean = self.outcomes.mean()
             for i in range(n):
-                y = self.outcomes[i]
-                square = (y - y_mean)**2
+                square = (y[i, 0] - y_mean)**2
                 mdsquare += square
             R2 = 1 - (sse/mdsquare)
             self.R2 = R2
@@ -210,7 +220,7 @@ class Regression():
                 null_controls = set(null_controls)
                 restricted_controls = restricted_controls - null_controls
                 restricted_controls = list(restricted_controls)
-                X_r = np.matrix(self.dataframe[restricted_controls].values)
+                X_r = np.matrix(self.controls[restricted_controls].values)
                 M_r = np.identity(n) - X_r*(X_r.T*X_r).I*X_r.T
                 y = self.y
                 res_r = M_r*y
@@ -270,6 +280,8 @@ class Regression():
         self.outcomes = self.dataframe[outcomes]
         self.y = np.matrix(self.outcomes.values).T
         self.control_names = controls[:]
+        self.nk_check = None
+        self.pmc_check = None
         if intercept:
             self.intercept = True
             self.dataframe.insert(0, 'intercept', 1)

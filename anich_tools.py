@@ -150,7 +150,12 @@ class Regression():
         if self.pmc_check == True and self.nk_check == True:
             #calculate cluster robust HC1/standard errors
             self.groups = {}
-            for group in self.dataframe[grouping_var].unique():
+            group_list = list(
+                    self.dataframe[grouping_var].loc[
+                            self.dataframe[grouping_var].notna() == True
+                    ].unique()
+            )
+            for group in group_list:
                 all_vars = list(self.controls.columns)
                 all_vars.append(self.outcomes.name)
                 group_df = self.dataframe.loc[
@@ -440,7 +445,12 @@ class Regression():
             all_vars = self.controls_fitted.copy()
             all_vars.insert(0, self.outcomes.name, self.outcomes)
             all_vars.insert(0, grouping_var, self.dataframe[grouping_var])
-            for group in all_vars[grouping_var].unique():
+            group_list = list(
+                    all_vars[grouping_var].loc[
+                            all_vars[grouping_var].notna() == True
+                    ].unique()
+            )
+            for group in group_list:
                 group_df = all_vars.loc[all_vars[grouping_var] == group].copy()
                 self.groups[f'{group}'] = group_df
             n = self.n

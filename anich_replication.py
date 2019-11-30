@@ -24,38 +24,9 @@ for filename in filenames:
 data = raw['STAR_Students']
 
 """
-Percentiles
-
-The tests were tailored to each grade
-level. Because there are no natural units for the test results, I
-scaled the test scores into percentile ranks. Specifically, in each
-grade level the regular and regular/aide students were pooled
-together, and students were assigned percentile scores based on
-their raw test scores, ranging from 0 (lowest score) to 100 (highest
-score). A separate percentile distribution was generated for each
-subject test (e.g., Math-SAT, Reading-SAT, Word-SAT, etc.). For
-each test I then determined where in the distribution of the
-regular-class students every student in the small classes would
-fall, and the students in the small classes were assigned these
-percentile scores. Finally, to summarize overall achievement, the
-average of the three SAT percentile rankings was calculated. If
-the performance of students in the small classes was distributed
-in the same way as performance of students in the regular classes,
-the average percentile score for students in the small classes
-would be 50.
-
-Formally, denote the cumulative distribution of scores on test j (denoted
-Tj) of students in the regular and regular/aide classes as FR(Tj) 5 prob [TRi
-j ,
-Tj] 5 yj. For each student i in a small class, we then calculated FR(TSi
-j ) 5 ySi
-j .
-Naturally, the distribution of yj for students in regular classes follows a uniform
-distribution. We then calculated the average of the three (or two for BSF)
-percentile rankings for each student. If one subtest score was missing, we took the
-average of the two percentiles that were available; and if two were missing, we
-used the percentile score corresponding to the only available test.
+Build variables/dummies
 """
+
 #calculate percentiles for each test
 for i in ['k', '1', '2', '3']:
     tests = [
@@ -141,7 +112,7 @@ data = pd.concat([data, attrition], axis = 1, sort = True)
 
 #calculate age in '85
 age_85 = 1985 - data[['birthyear']] 
-data.insert(0, 'age_85', age_85)
+data.insert(len(data.columns), 'age_85', age_85)
 
 #calculate White/Asian dummy
 wa = data['race'].copy()
@@ -156,53 +127,45 @@ wa.replace(
         0,
         inplace = True,
 )
-data.insert(0, 'white/asian', wa)
+data.insert(len(data.columns), 'white/asian', wa)
 
 #calculate free lunch dummy
 for i in ['k', '1', '2', '3']:
     dummy = data[f'g{i}freelunch'].copy()
     dummy.replace('FREE LUNCH', 1, inplace = True)
     dummy.replace('NON-FREE LUNCH', 0, inplace = True)
-    data.insert(0, f'{i}_freelunch', dummy)
+    data.insert(len(data.columns), f'{i}_freelunch', dummy)
+"""
+
+- create class type dummies (small) (reg+Aide)
+"""
+
+#create dummies to control for school effects
+school_effects = {}
+for i in ['k', '1', '2', '3']:
+    schids = list(data[f'g{i}schid'].loc[data[f'g{i}schid'].notna() == True].unique())
+    #drop one id to prevent perfect multicolinearity
+    schids.pop()
+    year_list = []
+    for schid in schids:
+        dummy = data[f'g{i}schid'].copy()
+        dummy.replace(schid, 1, inplace = True)
+        dummy = dummy.loc[dummy.notna() == True]
+        dummy.where(dummy == 1, other = 0, inplace = True)
+        name = f'd_g{i}{schid}'
+        data.insert(len(data.columns), name, dummy)
+        year_list.append(name)
+    school_effects[f'g{i}'] = year_list
+
+        
+#create class-type dummies
+
 
 """
 Table I
-
-summary stats for students who entered in each year
-
-Variables Needed:
-    - Free lunch
-        - STAR_Students
-            - 'gkfreelunch'
-    - White/Asian
-        - STAR_Students    
-            - 'white/asian'
-    - Age in 1985
-        - STAR_Student
-            - 'age_85'
-    - Attrition Rate
-        - STAR_Students
-            - 'attrition
-    - class size in year
-        - STAR_Students
-            - 'gkclasssize'
-    - Percentile score in year
-        - STAR_Students: math reading word
-            - 'gk_avg_pc'
-        
-
-For Groups by year:
-    - small class
-    - reg
-    - reg + aide
-        = STAR_Students
-            - 'gkclasstype'
-    
-P-value:
-    - for anova F-test
 """
-#recreate Table I
 
+#recreate Table I
 table_i_data = {}
 columns = []
 label_grade = {
@@ -227,6 +190,11 @@ for i in ['k', '1', '2', '3']:
         keep = keep.loc[keep[column].isna() == True]
     table_i_data[f'enter_{i}'] = keep
     
+    sub_index = [1,2,3,4,5,6]
+    super_label = f'Students who entered STAR in {label_grade[i]}'
+    super_index = [super_label for i in sub_index]
+    multi_index = pd.MultiIndex.from_arrays([super_index, sub_index])
+    
     #create sub-table
     label_vars = {
             'Free lunch': f'{i}_freelunch',
@@ -243,7 +211,8 @@ for i in ['k', '1', '2', '3']:
                     'Regular',
                     'Regular/Aide',
                     'Joint P-value',
-            ]
+            ],
+            index = multi_index
     )
     sub_table['Variable'] = list(label_vars.keys())
     
@@ -266,7 +235,22 @@ for i in ['k', '1', '2', '3']:
         sub_table.loc[sub_table['Variable'] == label_v, 'Joint P-value'] = entry
     sub_tables[f'enter_{i}'] = sub_table
 
-    
-
+#concatenate all sub-tables intro table I
+table_i = pd.DataFrame()
+for name, sub_table in sub_tables.items():
+    table_i = pd.concat([table_i, sub_table])
+#output table I
+table_i.to_csv('tables_figues/table_I.csv')
      
-    
+"""
+Table II
+"""
+
+"""
+- regress six table 1 variables against dummies for class size, school effects
+- table p-values for the F test that assignement to a class type has no effect
+on the explanatory variables.
+
+"""
+
+

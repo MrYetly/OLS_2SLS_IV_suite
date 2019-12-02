@@ -79,14 +79,6 @@ for i in ['k', '1', '2', '3']:
             avg_percentile[f'g{i}_avg_pc'][k] = avg
     data = pd.concat([data, avg_percentile], axis = 1, sort = True)
 
-#drop all obs without avg percentile
-for i in ['k','1','2','3']:
-    data.dropna(subset = [f'g{i}_avg_pc',], inplace = True)
-
-for i in ['k','1','2','3']:
-    blanks = data[f'g{i}_avg_pc'].loc[data[f'g{i}_avg_pc'].isna() == True]
-    print(blanks.shape)
-
 #calculate attrition dummy (left = 1, never left = 0)
 reference_df = data[['gkclasstype',
                     'g1classtype',
@@ -137,17 +129,17 @@ wa.replace(
         inplace = True,
 )
 #average value of dummy is 0.62
-#so replace every third missing value with 1, others with zero
+#so replace every third missing value with 0, others with 1
 #134 missing values replaced
-count = 1
 blanks = wa.loc[np.isnan(wa) == True]
+count = 1
 for i, item in blanks.iteritems():
     if count % 3 == 0:
-        wa[i] = 1
-    else:
         wa[i] = 0
+    else:
+        wa[i] = 1
+    count += 1
 data.insert(len(data.columns), 'white/asian', wa)
-
 
 #calculate free lunch dummy
 for i in ['k', '1', '2', '3']:
@@ -156,12 +148,17 @@ for i in ['k', '1', '2', '3']:
     dummy.replace('NON-FREE LUNCH', 0, inplace = True)
     #average of dummy is .48
     #so replace very other missing value with 1, others with zero
-    #<50 in each year after dropping blank pcs
+    #<50 obs affected in each year after dropping blank pcs
     blanks = dummy.loc[np.isnan(dummy) == True]
-    print(blanks.shape)
-    data.insert(len(data.columns), f'{i}_freelunch', dummy)
+    count = 1
+    for j, item in blanks.iteritems():
+        if count % 2 == 0:
+            dummy[j] = 1
+        else:
+            dummy[j] = 0
+        count += 1
+    data.insert(len(data.columns), f'd_{i}freelunch', dummy)
     
-
 #create dummies to control for school effects
 school_effects = {}
 for i in ['k', '1', '2', '3']:
@@ -202,7 +199,6 @@ d_girl = d_girl.loc[d_girl.notna() == True]
 d_girl.replace({'male': 0, 'female': 1}, inplace = True)
 blanks = d_girl.loc[np.isnan(d_girl) == True]
 #no blanks
-print(blanks.shape)
 data.insert(len(data.columns), 'd_girl', d_girl)
 
 #create teacher is white dummy
@@ -210,8 +206,17 @@ for i in ['k', '1', '2', '3']:
     dummy = data[f'g{i}trace'].copy()
     dummy.replace({'black': 0, 'asian': 0, 'white': 1}, inplace = True)
     blanks = dummy.loc[np.isnan(dummy) == True]
-    print(blanks.shape)
-    #<26 in each year after dropping blank pcs
+    #average of dummy is .8
+    #so replace every 5th value missing value with 0, others with 1
+    #<26 obs effected in each year after dropping blank pcs
+    blanks = dummy.loc[np.isnan(dummy) == True]
+    count = 1
+    for j, item in blanks.iteritems():
+        if count % 5 == 0:
+            dummy[j] = 0
+        else:
+            dummy[j] = 1
+        count += 1
     data.insert(len(data.columns), f'd_{i}trace', dummy)
     
 #create teacher has masters dummy
@@ -228,36 +233,69 @@ for i in ['k', '1', '2', '3']:
             inplace = True,
     )
     blanks = dummy.loc[np.isnan(dummy) == True]
-    print(blanks.shape)
+    #average of dummy is ~1/3 for k, 1, 2. ~4/10 for 3
+    #so replace every 3th value missing value with 1, others with 0 for k, 1, 2
+    #replace four 1 for every six 0 for 3rd grade
     #<26 each year after dropping blank pcs
+    count = 1
+    for j, item in blanks.iteritems():
+        if i != '3':
+            if count % 3 == 0:
+                dummy[j] = 1
+            else:
+                dummy[j] = 0
+        else:
+            if count % 10 < 5 and count % 10 != 0:
+                dummy[j] = 1
+            else:
+                dummy[j] = 0
+        count += 1
     data.insert(len(data.columns), f'd_{i}tmasters', dummy)
 
-#create initial assignment small, regaide dummies
-small = data['cmpstype'].copy()
-small.replace(
-        {
-                'small': 1,
-                'regular': 0,
-                'aide': 0,
-        },
-        inplace = True,
-)
-data.insert(len(data.columns), 'assnd_small', small)
-aide = data['cmpstype'].copy()
-aide.replace(
-        {
-                'small': 0,
-                'regular': 0,
-                'aide': 1,
-        },
-        inplace = True,
-)
-data.insert(len(data.columns), 'assnd_aide', aide)
+#create initial assignment small, regaide dummies for k,1,2,3
+columns = []
+small_init = []
+aide_init = []
+for i in ['k', '1', '2', '3']:
+    
+    #split up data by study entrance year
+    class_type = f'g{i}classtype'
+    columns.append(class_type)
+    assigned = data[class_type]
+    assigned = assigned.loc[data[columns[len(columns)-1]].notna() == True]
+    for column in columns[:-1]:
+        assigned = assigned.loc[data[column].isna() == True]
+    small = assigned.copy()
+    small.replace(
+            {
+                    'SMALL CLASS': 1,
+                    'REGULAR CLASS': 0,
+                    'REGULAR + AIDE CLASS': 0,
+            },
+            inplace = True,
+    )
+    small_init.append(small)
+    aide = assigned.copy()
+    aide.replace(
+            {
+                    'SMALL CLASS': 0,
+                    'REGULAR CLASS': 0,
+                    'REGULAR + AIDE CLASS': 1,
+            },
+            inplace = True,
+    )
+    aide_init.append(aide)
+
+#consolidate first assignments to single column
+c_small_init = pd.concat(small_init)
+c_aide_init = pd.concat(aide_init)
+data.insert(len(data.columns), 'small_init', c_small_init)
+data.insert(len(data.columns), 'aide_init', c_aide_init)
+    
 
 #create teacher male dummy
 for i in ['k', '1', '2', '3']:
     dummy = data[f'g{i}tgen'].copy()
-    print(dummy.unique())
     dummy.replace(
             {
                     'male': 1,
@@ -265,10 +303,18 @@ for i in ['k', '1', '2', '3']:
             },
             inplace = True,
     )
-    blanks = dummy.loc[dummy.isna() == True]
-    print(blanks.shape)
+    #mean ~0 for all years, so all blanks replaced with 0
     #<17 missing each year afte dropping blank pcs
+    dummy = dummy.fillna(0)
     data.insert(len(data.columns), f'd_{i}tmale', dummy)
+    
+#fill na with mean for each year in teacher experience variable
+#<88 obs affected when blank pc dropped
+for i in ['k', '1', '2', '3']:
+    mean = data[f'g{i}tyears'].mean()
+    data[f'g{i}tyears'] = data[f'g{i}tyears'].fillna(mean)
+
+   
 
 """
 Table I
@@ -301,7 +347,7 @@ for i in ['k', '1', '2', '3']:
     
     #create sub-table
     label_vars = {
-            'Free lunch': f'{i}_freelunch',
+            'Free lunch': f'd_{i}freelunch',
             'White/Asian': 'white/asian',
             'Age in 1985': 'age_85',
             'Attrition rate': 'attrition',
@@ -379,7 +425,7 @@ table_ii.insert(0, 'Variable', labels)
 for i in ['k', '1', '2', '3']:
     entry_data = table_ii_data[f'enter_{i}']    
     label_vars = {
-            'Free lunch': f'{i}_freelunch',
+            'Free lunch': f'd_{i}freelunch',
             'White/Asian': 'white/asian',
             'Age': 'age_85',
             'Attrition rate': 'attrition',
@@ -498,12 +544,12 @@ for i in ['k', '1', '2', '3']:
     #begin defining controls for each regression
     classtype_controls = {
         'OLS: actual class size': [
-                'd_{i}small',
-                'd_{i}regaide',
+                f'd_{i}small',
+                f'd_{i}regaide',
                 ],
         'Reduced form: initial class size': [
-                'assnd_small',
-                'assmd_aide',
+                'small_init',
+                'aide_init',
                 ],
     }
     #create subtable
@@ -536,7 +582,7 @@ for i in ['k', '1', '2', '3']:
         control_3 = control_2[:]
         control_3 += [
                 'white/asian',
-                f'{i}_freelunch',
+                f'd_{i}freelunch',
                 'd_girl',
         ]
         controls['c3'] = control_3
@@ -555,7 +601,7 @@ for i in ['k', '1', '2', '3']:
                 'Regular/aide class': 'aide',
                 'White/Asian (1 = yes)': 'white/asian',
                 'Girl (1 = yes)': 'd_girl',
-                'Free lunch (1 = yes)': f'{i}_freelunch',
+                'Free lunch (1 = yes)': f'd_{i}freelunch',
                 'White teacher': f'd_{i}trace',
                 'Male teacher': f'd_{i}tmale',
                 'Teacher experience': f'g{i}tyears',
@@ -573,6 +619,9 @@ for i in ['k', '1', '2', '3']:
                     controls[f'c{j}'],
                     grouping_var = f'g{i}schid',
             )
+            break
+        break
+    break
         
 
 

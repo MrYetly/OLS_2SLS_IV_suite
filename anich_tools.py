@@ -86,7 +86,7 @@ class Regression():
         outcomes = self.dataframe[outcomes]
         outcomes = outcomes.loc[outcomes.notna() == True]
         self.outcomes = outcomes
-        self.controls = self.dataframe.loc[self.outcomes.index, self.control_names]
+        self.controls = self.dataframe.loc[list(self.outcomes.index), self.control_names]
         self.y = np.matrix(self.outcomes.values).T
         self.X = np.matrix(self.controls.values)
         self.n = self.X.shape[0]
@@ -180,13 +180,18 @@ class Regression():
             Omega_hat = np.zeros((k,k))
             #for loop for Omega_hat summation
             for group, group_df in self.groups.items():
-                X = np.matrix(group_df[list(self.controls.columns)].values)
-                y = np.matrix(group_df[self.outcomes.name].values).T
+                #only keep obs that have outcomes
+                out = group_df[self.outcomes.name]
+                out = out.loc[out.notna() == True]
+                y = np.matrix(out.values).T
+                dep = group_df[list(self.controls.columns)]
+                dep = dep.loc[list(out.index)]
+                X = np.matrix(dep.values)
                 try:
                     M = (np.identity(X.shape[0]) - X*(X.T*X).I*X.T)
                     e_hat = M*y
                     product = X.T*e_hat*e_hat.T*X
-                    Omega_hat += product
+                    Omega_hat = Omega_hat + product
                 except Exception as e:
                     print(f'group: {group}\n', e)
             X = self.X

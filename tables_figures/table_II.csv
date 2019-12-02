@@ -1,7 +1,7 @@
 ,Variable,Grade entered STAR program,Grade entered STAR program,Grade entered STAR program,Grade entered STAR program
 ,,k,1,2,3
-1,Free lunch,0.45,0.29,,
-2,White/Asian,0.65,0.28,0.71,0.37
+1,Free lunch,0.42,0.41,0.23,0.18
+2,White/Asian,0.61,0.37,0.53,0.44
 3,Age,0.64,0.22,0.44,0.32
 4,Attrition rate,0.01,0.37,0.85,
 5,Actual class size,0.0,0.0,0.0,0.0

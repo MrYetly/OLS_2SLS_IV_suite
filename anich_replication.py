@@ -10,6 +10,7 @@ from anich_tools import Regression
 import pandas as pd
 import numpy as np
 import os
+import matplotlib.pyplot as plt
 
 #set current directory
 __location__ = os.getcwd()
@@ -51,7 +52,7 @@ for i in ['k', '1', '2', '3']:
             below = reg_scores.loc[reg_scores[test] < row[test]]
             below = below[test].count()
             percentile = below/n
-            percentiles[f'{test}_pc'][j] = percentile
+            percentiles[f'{test}_pc'][j] = percentile * 100
         
         #fit small scores into distribution
         small_scores = raw_scores.loc[raw_scores[f'g{i}classtype'] == 'SMALL CLASS']
@@ -59,7 +60,7 @@ for i in ['k', '1', '2', '3']:
             below = reg_scores.loc[reg_scores[test] < row[test]]
             below = below[test].count()
             percentile = below/n
-            percentiles[f'{test}_pc'][j] = percentile
+            percentiles[f'{test}_pc'][j] = percentile * 100
         
         data = pd.concat([data, percentiles], axis = 1, sort = True)
         test_pc.append(f'{test}_pc')
@@ -135,10 +136,6 @@ for i in ['k', '1', '2', '3']:
     dummy.replace('FREE LUNCH', 1, inplace = True)
     dummy.replace('NON-FREE LUNCH', 0, inplace = True)
     data.insert(len(data.columns), f'{i}_freelunch', dummy)
-"""
-
-- create class type dummies (small) (reg+Aide)
-"""
 
 #create dummies to control for school effects
 school_effects = {}
@@ -375,7 +372,80 @@ table_iii.index.name = 'Actual class size in first grade'
 
 #export table_iii
 table_iii.to_csv('tables_figures/table_III.csv')
+
+"""
+Figure 1
+- distribution of average percentile score by class size and grade
+"""
+figure_i_data = data[[
+        'd_ksmall',
+        'd_kregaide',
+        'd_1small',
+        'd_1regaide',
+        'd_2small',
+        'd_2regaide',
+        'd_3small',
+        'd_3regaide',
+        'gk_avg_pc',
+        'g1_avg_pc',
+        'g2_avg_pc',
+        'g3_avg_pc',
+]]
+
+#format figure
+fig, axes = plt.subplots(
+        nrows = 2,
+        ncols = 2,
+        gridspec_kw = {
+                'hspace': .3,
+                'wspace': .4,
+        },
+        figsize =  (10,8),
+)
+fig.suptitle(
+        'Experimental Estimates',
+        fontsize = 20,
+)
+
+label_grade = {
+            'k': 'Kindergarten',
+            '1': '1st Grade',
+            '2': '2nd Grade',
+            '3': '3rd Grade',
+    }
+count = 0
+for i in [0,1]:
+    for j in [0,1]:
+        label_key = list(label_grade.keys())[count]
         
-                
+        #create plots
+        small_data = figure_i_data.loc[
+                figure_i_data[f'd_{label_key}small'] == 1,
+                f'g{label_key}_avg_pc',
+        ].copy()
+        small_data.name = 'Small'
+        reg_data = figure_i_data.loc[
+                figure_i_data[f'd_{label_key}regaide'] == 1,
+                f'g{label_key}_avg_pc',
+        ]
+        reg_data.name = 'Regular'
+        plot_data = pd.concat([small_data, reg_data], axis = 1)
+        #plot kernel density with bandwith=0.15
+        plot_data.plot.kde(bw_method = 0.15, ax = axes[i,j])
+        axes[i, j].set_title(label_grade[label_key])
+        axes[i, j].set(
+                ylim = (0, 0.015),
+                xlim = (-20, 120),
+        )
+        axes[i,j].set_xlabel('Stanford Achievement Test Percentile')
+        axes[i,j].set_ylabel('Density')
+        count += 1
+
+#export figure I
+fig.savefig(
+    'tables_figures/figure_I.png',
+    format = 'png',
+)
+
 
 

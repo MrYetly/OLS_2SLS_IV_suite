@@ -78,7 +78,15 @@ for i in ['k', '1', '2', '3']:
             avg = row.mean()
             avg_percentile[f'g{i}_avg_pc'][k] = avg
     data = pd.concat([data, avg_percentile], axis = 1, sort = True)
-        
+
+#drop all obs without avg percentile
+for i in ['k','1','2','3']:
+    data.dropna(subset = [f'g{i}_avg_pc',], inplace = True)
+
+for i in ['k','1','2','3']:
+    blanks = data[f'g{i}_avg_pc'].loc[data[f'g{i}_avg_pc'].isna() == True]
+    print(blanks.shape)
+
 #calculate attrition dummy (left = 1, never left = 0)
 reference_df = data[['gkclasstype',
                     'g1classtype',
@@ -128,14 +136,31 @@ wa.replace(
         0,
         inplace = True,
 )
+#average value of dummy is 0.62
+#so replace every third missing value with 1, others with zero
+#134 missing values replaced
+count = 1
+blanks = wa.loc[np.isnan(wa) == True]
+for i, item in blanks.iteritems():
+    if count % 3 == 0:
+        wa[i] = 1
+    else:
+        wa[i] = 0
 data.insert(len(data.columns), 'white/asian', wa)
+
 
 #calculate free lunch dummy
 for i in ['k', '1', '2', '3']:
     dummy = data[f'g{i}freelunch'].copy()
     dummy.replace('FREE LUNCH', 1, inplace = True)
     dummy.replace('NON-FREE LUNCH', 0, inplace = True)
+    #average of dummy is .48
+    #so replace very other missing value with 1, others with zero
+    #<50 in each year after dropping blank pcs
+    blanks = dummy.loc[np.isnan(dummy) == True]
+    print(blanks.shape)
     data.insert(len(data.columns), f'{i}_freelunch', dummy)
+    
 
 #create dummies to control for school effects
 school_effects = {}
@@ -170,7 +195,81 @@ for i in ['k', '1', '2', '3']:
     regaide.where(regaide == 1, other = 0, inplace = True)
     regaide = regaide.astype('int32')
     data.insert(len(data.columns), f'd_{i}regaide', regaide)
+
+#create girl dummy
+d_girl = data['gender'].copy()
+d_girl = d_girl.loc[d_girl.notna() == True]
+d_girl.replace({'male': 0, 'female': 1}, inplace = True)
+blanks = d_girl.loc[np.isnan(d_girl) == True]
+#no blanks
+print(blanks.shape)
+data.insert(len(data.columns), 'd_girl', d_girl)
+
+#create teacher is white dummy
+for i in ['k', '1', '2', '3']:
+    dummy = data[f'g{i}trace'].copy()
+    dummy.replace({'black': 0, 'asian': 0, 'white': 1}, inplace = True)
+    blanks = dummy.loc[np.isnan(dummy) == True]
+    print(blanks.shape)
+    #<26 in each year after dropping blank pcs
+    data.insert(len(data.columns), f'd_{i}trace', dummy)
     
+#create teacher has masters dummy
+for i in ['k', '1', '2', '3']:
+    dummy = data[f'g{i}thighdegree'].copy()
+    dummy.replace(
+            {
+                    'bachelors': 0,
+                    'masters': 1,
+                    'MASTERS +': 0,
+                    'specialist': 0,
+                    'doctoral': 0,
+            },
+            inplace = True,
+    )
+    blanks = dummy.loc[np.isnan(dummy) == True]
+    print(blanks.shape)
+    #<26 each year after dropping blank pcs
+    data.insert(len(data.columns), f'd_{i}tmasters', dummy)
+
+#create initial assignment small, regaide dummies
+small = data['cmpstype'].copy()
+small.replace(
+        {
+                'small': 1,
+                'regular': 0,
+                'aide': 0,
+        },
+        inplace = True,
+)
+data.insert(len(data.columns), 'assnd_small', small)
+aide = data['cmpstype'].copy()
+aide.replace(
+        {
+                'small': 0,
+                'regular': 0,
+                'aide': 1,
+        },
+        inplace = True,
+)
+data.insert(len(data.columns), 'assnd_aide', aide)
+
+#create teacher male dummy
+for i in ['k', '1', '2', '3']:
+    dummy = data[f'g{i}tgen'].copy()
+    print(dummy.unique())
+    dummy.replace(
+            {
+                    'male': 1,
+                    'female': 0,
+            },
+            inplace = True,
+    )
+    blanks = dummy.loc[dummy.isna() == True]
+    print(blanks.shape)
+    #<17 missing each year afte dropping blank pcs
+    data.insert(len(data.columns), f'd_{i}tmale', dummy)
+
 """
 Table I
 """
@@ -374,9 +473,114 @@ table_iii.index.name = 'Actual class size in first grade'
 table_iii.to_csv('tables_figures/table_III.csv')
 
 """
-Figure 1
-- distribution of average percentile score by class size and grade
+Table V
+- create dummy for girl, white teacher, tch master's degree
+    - gender
+    - gktrace
+    - gkthighdegree
+- control for teacher exp
+    - gktyears
+- regress using actual class size and initial class size for that grade
+    - actual: gkclasstype
+    - assigned: cmpstype
+    - groups NOT based upon when entered.
+- display R2
+- display cluster robust SE
+- all reg include constant
+
 """
+reg = Regression(data)
+for i in ['k', '1', '2', '3']:
+    
+    #outcomes of interest
+    outcome = f'g{i}_avg_pc'
+    
+    #begin defining controls for each regression
+    classtype_controls = {
+        'OLS: actual class size': [
+                'd_{i}small',
+                'd_{i}regaide',
+                ],
+        'Reduced form: initial class size': [
+                'assnd_small',
+                'assmd_aide',
+                ],
+    }
+    #create subtable
+    sub_col = [1,2,3,4,5,6,7,8]
+    super_label = 'Assignment group in first grade'
+    l = list(classtype_controls.keys())
+    super_col = [
+            l[0],
+            l[0],
+            l[0],
+            l[0],
+            l[1],
+            l[1],
+            l[1],
+            l[1],
+    ]
+    multi_col = pd.MultiIndex.from_arrays([super_col, sub_col])
+    sub_table = pd.DataFrame(columns = multi_col)
+    sub_table.insert(0, 'Explanatory Variable', np.nan)
+    
+    sub_col = 0
+    controls = {}
+    for label, value in classtype_controls.items():
+        #finish defining controls for each subsection
+        control_1 = value[:]
+        controls['c1'] = control_1
+        control_2 = control_1[:]
+        control_2 += school_effects[f'g{i}']
+        controls['c2'] = control_2
+        control_3 = control_2[:]
+        control_3 += [
+                'white/asian',
+                f'{i}_freelunch',
+                'd_girl',
+        ]
+        controls['c3'] = control_3
+        control_4 = control_3[:]
+        control_4 += [
+                f'g{i}tyears',
+                f'd_{i}trace',
+                f'd_{i}tmasters',
+                f'd_{i}tmale',
+        ]
+        controls['c4'] = control_4
+        
+        #enter data into subtable
+        label_vars = {
+                'Small class': 'small',
+                'Regular/aide class': 'aide',
+                'White/Asian (1 = yes)': 'white/asian',
+                'Girl (1 = yes)': 'd_girl',
+                'Free lunch (1 = yes)': f'{i}_freelunch',
+                'White teacher': f'd_{i}trace',
+                'Male teacher': f'd_{i}tmale',
+                'Teacher experience': f'g{i}tyears',
+                "Master's Degree": f'd_{i}tmasters',
+                'School fixed effects': None,
+                'R2': None,
+        }
+        sub_table['Explanatory Variable'] = list(label_vars.keys())
+        for j in [1,2,3,4]:
+            sub_col += 1
+            #run OLS regression with cluster robust SE, grouping by school id
+            print(i,sub_col)
+            reg.cluster_ols(
+                    outcome,
+                    controls[f'c{j}'],
+                    grouping_var = f'g{i}schid',
+            )
+        
+
+
+
+"""
+Figure 1
+"""
+
 figure_i_data = data[[
         'd_ksmall',
         'd_kregaide',
@@ -425,7 +629,7 @@ for i in [0,1]:
         ].copy()
         small_data.name = 'Small'
         reg_data = figure_i_data.loc[
-                figure_i_data[f'd_{label_key}regaide'] == 1,
+                figure_i_data[f'd_{label_key}small'] == 0,
                 f'g{label_key}_avg_pc',
         ]
         reg_data.name = 'Regular'

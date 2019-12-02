@@ -1,0 +1,25 @@
+,Students who entered STAR in kindergarten,Variable,Small,Regular,Regular/Aide,Joint P-value
+Students who entered STAR in kindergarten,1,Free lunch,0.47,0.48,0.5,0.09
+Students who entered STAR in kindergarten,2,White/Asian,0.68,0.68,0.66,0.25
+Students who entered STAR in kindergarten,3,Age in 1985,5.26,5.24,5.24,0.45
+Students who entered STAR in kindergarten,4,Attrition rate,0.49,0.52,0.53,0.02
+Students who entered STAR in kindergarten,5,Class size in kindergarten,15.12,22.38,22.77,0.0
+Students who entered STAR in kindergarten,6,Percentile score in kindergarten,0.53,0.48,0.48,0.0
+Students who entered STAR in first grade,1,Free lunch,0.59,0.62,0.61,0.52
+Students who entered STAR in first grade,2,White/Asian,0.62,0.56,0.65,0.0
+Students who entered STAR in first grade,3,Age in 1985,5.61,5.69,5.69,0.08
+Students who entered STAR in first grade,4,Attrition rate,0.53,0.51,0.47,0.07
+Students who entered STAR in first grade,5,Class size in first grade,15.87,22.71,23.46,0.0
+Students who entered STAR in first grade,6,Percentile score in first grade,0.48,0.41,0.46,0.0
+Students who entered STAR in second grade,1,Free lunch,0.66,0.63,0.66,0.6
+Students who entered STAR in second grade,2,White/Asian,0.57,0.57,0.46,0.0
+Students who entered STAR in second grade,3,Age in 1985,5.72,5.75,5.78,0.43
+Students who entered STAR in second grade,4,Attrition rate,0.37,0.34,0.35,0.58
+Students who entered STAR in second grade,5,Class size in second grade,15.5,23.71,23.59,0.0
+Students who entered STAR in second grade,6,Percentile score in second grade,0.45,0.44,0.4,0.01
+Students who entered STAR in third grade,1,Free lunch,0.6,0.64,0.69,0.04
+Students who entered STAR in third grade,2,White/Asian,0.67,0.58,0.56,0.0
+Students who entered STAR in third grade,3,Age in 1985,5.78,5.76,5.84,0.27
+Students who entered STAR in third grade,4,Attrition rate,0.0,0.0,0.0,
+Students who entered STAR in third grade,5,Class size in third grade,15.97,24.05,24.43,0.0
+Students who entered STAR in third grade,6,Percentile score in third grade,0.47,0.44,0.41,0.01

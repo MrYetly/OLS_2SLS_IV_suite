@@ -211,11 +211,7 @@ for i in ['k', '1', '2', '3']:
             'Attrition rate': 'attrition',
             f'Class size in {label_grade[i]}': f'g{i}classsize',
             f'Percentile score in {label_grade[i]}': f'g{i}_avg_pc',
-        }
-    sub_index = [1,2,3,4,5,6]
-    super_label = f'Students who entered STAR in {label_grade[i]}'
-    super_index = [super_label for i in sub_index]
-    multi_index = pd.MultiIndex.from_arrays([super_index, sub_index])
+        } 
     sub_table = pd.DataFrame(
             columns = [
                     'Variable',
@@ -224,8 +220,9 @@ for i in ['k', '1', '2', '3']:
                     'Regular/Aide',
                     'Joint P-value',
             ],
-            index = multi_index
+            index = [1,2,3,4,5,6]
     )
+    sub_table.index.name = f'Students who entered STAR in {label_grade[i]}'
     sub_table['Variable'] = list(label_vars.keys())
     
     #insert means into sub-table
@@ -234,6 +231,7 @@ for i in ['k', '1', '2', '3']:
         type_df = group_df.loc[group_df[f'g{i}classtype'] == class_t]
         for label_v, var in label_vars.items():
             entry = type_df[var].mean()
+            entry = round(entry, 2)
             sub_table.loc[sub_table['Variable'] == label_v, label_c] = entry
     #insert f-test p-values
     p_func = Regression(group_df)
@@ -246,16 +244,16 @@ for i in ['k', '1', '2', '3']:
                 var_to_analyze = var,
                 grouping_var = class_type,
         )
-        entry = p
+        entry = round(p, 2)
         sub_table.loc[sub_table['Variable'] == label_v, 'Joint P-value'] = entry
     sub_tables[f'enter_{i}'] = sub_table
 
 #concatenate all sub-tables intro table I
-table_i = pd.DataFrame()
-for name, sub_table in sub_tables.items():
-    table_i = pd.concat([table_i, sub_table])
+tables = [table for table in sub_tables.values()]
+names = [table.index.name for table in sub_tables.values()]
+table_i = pd.concat(tables, keys = names)
 #output table I
-table_i.to_csv('tables_figues/table_I.csv')
+table_i.to_csv('tables_figures/table_I.csv')
      
 """
 Table II
@@ -271,6 +269,7 @@ labels = [
             'Actual class size',
             'Percentile score',
 ]
+#format and create table
 sub_col = ['k', '1', '2', '3']
 super_label = 'Grade entered STAR program'
 super_col = [super_label for i in sub_col]
@@ -280,6 +279,7 @@ table_ii = pd.DataFrame(
         index = [1,2,3,4,5,6]
 )
 table_ii.insert(0, 'Variable', labels)
+#enter data into table
 for i in ['k', '1', '2', '3']:
     entry_data = table_ii_data[f'enter_{i}']    
     label_vars = {
@@ -290,6 +290,7 @@ for i in ['k', '1', '2', '3']:
             'Actual class size': f'g{i}classsize',
             'Percentile score': f'g{i}_avg_pc',
     }
+    #calculate p values
     reg = Regression(entry_data)
     for label_v, var in label_vars.items():
         #skip third year attrition F test, it's undefined
@@ -310,6 +311,71 @@ for i in ['k', '1', '2', '3']:
         else:
             continue
 #output table II
-table_ii.to_csv('tables_figues/table_II.csv')
+table_ii.to_csv('tables_figures/table_II.csv')
+
+"""
+Table III
+- actual class size in first grade
+    - 'g1classsize'
+    - split by assignment grouo
+        - 'cmpstype' or 'g1classtype'
+    - averaged at bottom
+"""
+
+#create table III
+table_iii_data = data.loc[
+        data['g1classtype'].notna() == True,
+        ['g1classsize', 'g1classtype']
+]
+label_type = {
+        'Aide': 'REGULAR + AIDE CLASS',
+        'Small': 'SMALL CLASS',
+        'Regular': 'REGULAR CLASS',
+        }
+
+#format table
+sub_col = ['Small', 'Regular', 'Aide']
+super_label = 'Assignment group in first grade'
+super_col = [super_label for i in sub_col]
+multi_col = pd.MultiIndex.from_arrays([super_col, sub_col])
+index = pd.Index(
+        list(
+                range(
+                        int(table_iii_data['g1classsize'].min()),
+                        int(table_iii_data['g1classsize'].max()) + 1
+                    )
+            )
+  )
+table_iii = pd.DataFrame(columns = multi_col, index = index)
+
+#enter data into table
+averages = {}
+for label, class_type in label_type.items():
+    col_data = table_iii_data.loc[
+            table_iii_data['g1classtype'] == class_type,
+            'g1classsize'
+    ]
+    avg = col_data.mean()
+    averages[label] = round(avg, 1)
+    for size in list(table_iii.index):
+        entry = col_data.loc[col_data == size].count()
+        table_iii.loc[
+                size,
+                ('Assignment group in first grade', label)
+        ] = entry
+
+#create and concatenate averages row
+averages = pd.DataFrame(
+        averages,
+        index = ['Average class size',],
+)
+averages.columns = multi_col
+table_iii = pd.concat([table_iii, averages])
+table_iii.index.name = 'Actual class size in first grade'
+
+#export table_iii
+table_iii.to_csv('tables_figures/table_III.csv')
+        
+                
 
 

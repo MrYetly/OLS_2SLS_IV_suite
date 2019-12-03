@@ -59,7 +59,7 @@ class Regression():
         self.endog_name = None
         self.endog = None
         self.endog_fitted = None
-        self.exog_names = None
+        self.exog_name = None
         self.exog = None
         self.instrument_name = None
         self.instrument = None
@@ -279,7 +279,7 @@ class Regression():
            outcomes, 
            controls, 
            endog = None, 
-           instrument = None, 
+           instruments = None, 
            intercept = True
            ):
         #sort info into attributes
@@ -303,16 +303,21 @@ class Regression():
         self.controls = self.dataframe.loc[list(self.outcomes.index), self.control_names]
         self.X = np.matrix(self.controls.values)
         self.endog_name = endog
-        self.endog = self.dataframe[self.endog_name]
-        self.instrument_name = instrument
-        self.instrument = self.dataframe[self.instrument_name]
+        self.endog = self.controls[self.endog_name]
+        self.instrument_names = instruments[:]
+        instruments = self.dataframe[self.instrument_names]
+        instruments = instruments.loc[list(self.controls.index)]
+        self.instruments = instruments
         exog = self.control_names[:]
         exog.remove(self.endog_name)
-        exog.remove(self.instrument_name)
-        self.exog_names = exog
-        self.exog = self.dataframe[self.exog_names]
+        self.exog_name = exog
+        self.exog = self.controls[self.exog_name]
         fs_controls = self.exog.copy()
-        fs_controls.insert(0, self.instrument_name, self.instrument)
+        fs_controls = pd.concat(
+                [fs_controls, self.instruments],
+                axis = 1,
+                sort = True,
+        )
         self.fs_controls = fs_controls
         self.Z = np.matrix(self.fs_controls.values)
         n_fs = self.Z.shape[0]
@@ -351,17 +356,18 @@ class Regression():
             self.endog_fitted = pd.Series(
                     list(X_endog_hat.flat),
                     name = f'{self.endog_name}_fitted',
+                    index = list(self.endog.index),
             )
     
             #calculate first stage f-stat
-            q = 1
+            q = len(self.instrument_names)
             #sum unrestricted residuals
             sse_ur = 0
             for i in range(n_fs):
                 square = fs_res[i,0]**2
                 sse_ur += square
             #create and sum restricted residuals
-            Z_r = np.matrix(self.dataframe[list(self.exog.columns)].values)
+            Z_r = np.matrix(self.exog.values)
             M_r = np.identity(n_fs) - Z_r*(Z_r.T*Z_r).I*Z_r.T
             res_r = M_r*X_endog
             sse_r = 0
@@ -374,8 +380,7 @@ class Regression():
             
         
             #begin second stage regression
-            controls_fitted = self.controls.copy()
-            controls_fitted.drop(columns = self.endog_name, inplace = True)
+            controls_fitted = self.exog.copy()
             controls_fitted.insert(
                     0,
                     self.endog_fitted.name,
@@ -445,11 +450,11 @@ class Regression():
                 mdsquare = 0
                 y_mean = self.outcomes.mean()
                 for i in range(n):
-                    y = self.outcomes[i]
-                    square = (y - y_mean)**2
+                    square = (y[i, 0] - y_mean)**2
                     mdsquare += square
                 R2 = 1 - (sse/mdsquare)
                 self.R2 = R2
+                
     
     def cluster_iv(self,
                    outcomes, 
@@ -492,7 +497,7 @@ class Regression():
                     M = (np.identity(X.shape[0]) - X*(X.T*X).I*X.T)
                     e_hat = M*y
                     product = X.T*e_hat*e_hat.T*X
-                    Omega_hat += product
+                    Omega_hat = Omega_hat + product
                 except Exception as e:
                     print(f'group: {group}\n', e)
             X_hat = self.X_hat

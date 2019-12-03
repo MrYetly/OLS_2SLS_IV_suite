@@ -195,10 +195,17 @@ for i in ['k', '1', '2', '3']:
 
 #create girl dummy
 d_girl = data['gender'].copy()
-d_girl = d_girl.loc[d_girl.notna() == True]
 d_girl.replace({'male': 0, 'female': 1}, inplace = True)
-blanks = d_girl.loc[np.isnan(d_girl) == True]
-#no blanks
+blanks = d_girl.loc[d_girl.isna() == True]
+#about 1/2 students are female, so replace everyother blank with 1
+#<5 obs effected once blank pc dropped
+count = 1
+for i, item in blanks.iteritems():
+    if count % 2 == 0:
+        d_girl[i] = 1
+    else:
+        d_girl[i] = 0
+    count += 1
 data.insert(len(data.columns), 'd_girl', d_girl)
 
 #create teacher is white dummy
@@ -252,10 +259,11 @@ for i in ['k', '1', '2', '3']:
         count += 1
     data.insert(len(data.columns), f'd_{i}tmasters', dummy)
 
-#create initial assignment small, regaide dummies for k,1,2,3
+#create initial assignment small, reg, regaide dummies for k,1,2,3
 columns = []
 small_init = []
 aide_init = []
+reg_init = []
 for i in ['k', '1', '2', '3']:
     
     #split up data by study entrance year
@@ -265,6 +273,7 @@ for i in ['k', '1', '2', '3']:
     assigned = assigned.loc[data[columns[len(columns)-1]].notna() == True]
     for column in columns[:-1]:
         assigned = assigned.loc[data[column].isna() == True]
+    
     small = assigned.copy()
     small.replace(
             {
@@ -275,6 +284,7 @@ for i in ['k', '1', '2', '3']:
             inplace = True,
     )
     small_init.append(small)
+    
     aide = assigned.copy()
     aide.replace(
             {
@@ -285,13 +295,26 @@ for i in ['k', '1', '2', '3']:
             inplace = True,
     )
     aide_init.append(aide)
+    
+    reg = assigned.copy()
+    reg.replace(
+            {
+                    'SMALL CLASS': 0,
+                    'REGULAR CLASS': 1,
+                    'REGULAR + AIDE CLASS': 0,
+            },
+            inplace = True,
+    )
+    reg_init.append(reg)
+    
 
 #consolidate first assignments to single column
 c_small_init = pd.concat(small_init)
 c_aide_init = pd.concat(aide_init)
+c_reg_init = pd.concat(reg_init)
 data.insert(len(data.columns), 'small_init', c_small_init)
 data.insert(len(data.columns), 'aide_init', c_aide_init)
-    
+data.insert(len(data.columns), 'reg_init', c_reg_init)
 
 #create teacher male dummy
 for i in ['k', '1', '2', '3']:
@@ -314,7 +337,11 @@ for i in ['k', '1', '2', '3']:
     mean = data[f'g{i}tyears'].mean()
     data[f'g{i}tyears'] = data[f'g{i}tyears'].fillna(mean)
 
-   
+#fill na for class size with average size for classtype for year
+#1 obs affected in 3rd grade when blank pc dropped
+blank = data[f'g3classsize'].loc[data['g3_avg_pc'].notna() == True]
+blank = blank.loc[blank.isna() == True]
+blank['g3classsize'] = 21.0
 
 """
 Table I
@@ -520,21 +547,38 @@ table_iii.to_csv('tables_figures/table_III.csv')
 
 """
 Table V
-- create dummy for girl, white teacher, tch master's degree
-    - gender
-    - gktrace
-    - gkthighdegree
-- control for teacher exp
-    - gktyears
-- regress using actual class size and initial class size for that grade
-    - actual: gkclasstype
-    - assigned: cmpstype
-    - groups NOT based upon when entered.
-- display R2
-- display cluster robust SE
-- all reg include constant
-
 """
+#missing data check
+i = 2
+label_vars = {
+                f'd_{i}small': None,
+                f'd_{i}regaide': None,
+                'white/asian': 'White/Asian (1 = yes)',
+                'd_girl': 'Girl (1 = yes)',
+                f'd_{i}freelunch': 'Free lunch (1 = yes)',
+                f'd_{i}trace': 'White teacher',
+                f'd_{i}tmale': 'Male teacher',
+                f'g{i}tyears': 'Teacher experience',
+                f'd_{i}tmasters': "Master's Degree",
+    }
+for var in label_vars.keys():
+    blanks = data[var].loc[data['g2_avg_pc'].notna() == True]
+    #blanks = blanks.loc[blanks.isna() == True]
+    print(var)
+    print(blanks.shape)
+    
+reg = Regression(data)
+c = list(label_vars)
+c += school_effects['g2']
+reg.ols('g2_avg_pc', c)
+
+for i in range(reg.X.shape[0]):
+    if np.any(np.isnan(reg.X[i])) == True:
+        for j in range(reg.X.shape[1]):
+            if np.isnan(reg.X[i,j]) == True:
+                print(i,j)
+
+
 sub_tables = []
 reg = Regression(data)
 for i in ['k', '1', '2', '3']:
@@ -635,8 +679,10 @@ for i in ['k', '1', '2', '3']:
             )
             """
             reg.ols(outcome, controls[f'c{j}'])
+            #continue to next regression if perfect multicolinearity check failed
             if reg.pmc_check != True:
                 continue
+            #input coefficient and standard error for each control
             for control in controls[f'c{j}']:
                 if 'small' in control:
                     label_v = 'small'
@@ -659,6 +705,24 @@ for i in ['k', '1', '2', '3']:
                     ] = se
                 else:
                     continue
+                
+            #input school effects yes/no
+            if sub_col==1 or sub_col==5:
+                entry = 'No'
+            else:
+                entry = 'Yes'
+            sub_table.loc[
+                            'School fixed effects',
+                            (label_super, sub_col),
+            ] = entry
+            
+            #input r2
+            entry = round(reg.R2, 2)
+            sub_table.loc[
+                            'R2',
+                            (label_super, sub_col),
+            ] = entry
+    #add sub_table to list of sub_tables
     sub_tables.append(sub_table)
 
 #concatenate sub_tables          
@@ -669,8 +733,53 @@ table_v.to_csv('tables_figures/table_V.csv')
 
 """
 Table VII
+ - control for controls['c4']
 """
 
+#format table
+super_index = ['k', '1', '2', '3']
+sub_index = ['coef', 'se']
+multi_index = pd.MultiIndex.from_product([super_index, sub_index])
+table_vii = pd.DataFrame(
+        columns = [
+                'Grade',
+                'OLS',
+                '2SLS',
+                'Sample Size',
+        ],
+        index = multi_index,
+)
+reg = Regression(data)
+for i in ['k','1','2','3']:
+    controls = [
+            f'g{i}classsize',
+            'white/asian',
+            f'd_{i}freelunch',
+            'd_girl',
+            f'g{i}tyears',
+            f'd_{i}trace',
+            f'd_{i}tmasters',
+    ]
+    controls += school_effects[f'g{i}']
+    outcome = f'g{i}_avg_pc'
+    endog = f'g{i}classsize'
+    instruments = [
+            'small_init',
+            'reg_init',
+    ]
+    reg.iv(
+            outcome,
+            controls,
+            endog = endog,
+            instruments = instruments,
+    )
+    break
+
+for col in reg.fs_controls.columns:
+        df = reg.fs_controls
+        blanks = df[col]
+        if blanks.count() != blanks.shape[0]:
+            print('Found')
 
 """
 Figure 1

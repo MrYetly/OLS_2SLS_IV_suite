@@ -535,6 +535,7 @@ Table V
 - all reg include constant
 
 """
+sub_tables = []
 reg = Regression(data)
 for i in ['k', '1', '2', '3']:
     
@@ -552,7 +553,19 @@ for i in ['k', '1', '2', '3']:
                 'aide_init',
                 ],
     }
+    controls = {}
     #create subtable
+    label_vars = {
+                'small': 'Small class',
+                'aide': 'Regular/aide class',
+                'white/asian': 'White/Asian (1 = yes)',
+                'd_girl': 'Girl (1 = yes)',
+                f'd_{i}freelunch': 'Free lunch (1 = yes)',
+                f'd_{i}trace': 'White teacher',
+                f'd_{i}tmale': 'Male teacher',
+                f'g{i}tyears': 'Teacher experience',
+                f'd_{i}tmasters': "Master's Degree",
+    }
     sub_col = [1,2,3,4,5,6,7,8]
     super_label = 'Assignment group in first grade'
     l = list(classtype_controls.keys())
@@ -567,12 +580,26 @@ for i in ['k', '1', '2', '3']:
             l[1],
     ]
     multi_col = pd.MultiIndex.from_arrays([super_col, sub_col])
-    sub_table = pd.DataFrame(columns = multi_col)
-    sub_table.insert(0, 'Explanatory Variable', np.nan)
+    super_index = list(label_vars.values())
+    sub_index = ['coef', 'se']
+    multi_index = pd.MultiIndex.from_product([super_index, sub_index])
+    sub_table = pd.DataFrame(columns = multi_col, index = multi_index)
+    fixed_effects = pd.DataFrame(
+            np.nan,
+            index = ['School fixed effects',],
+            columns = multi_col
+    )
+    r2 = pd.DataFrame(
+            np.nan,
+            index = ['R2',],
+            columns = multi_col
+    )
+    sub_table = pd.concat([sub_table, fixed_effects, r2])
     
+    #enter data into subtable
     sub_col = 0
-    controls = {}
-    for label, value in classtype_controls.items():
+    
+    for label_super, value in classtype_controls.items():
         #finish defining controls for each subsection
         control_1 = value[:]
         controls['c1'] = control_1
@@ -595,35 +622,54 @@ for i in ['k', '1', '2', '3']:
         ]
         controls['c4'] = control_4
         
-        #enter data into subtable
-        label_vars = {
-                'Small class': 'small',
-                'Regular/aide class': 'aide',
-                'White/Asian (1 = yes)': 'white/asian',
-                'Girl (1 = yes)': 'd_girl',
-                'Free lunch (1 = yes)': f'd_{i}freelunch',
-                'White teacher': f'd_{i}trace',
-                'Male teacher': f'd_{i}tmale',
-                'Teacher experience': f'g{i}tyears',
-                "Master's Degree": f'd_{i}tmasters',
-                'School fixed effects': None,
-                'R2': None,
-        }
-        sub_table['Explanatory Variable'] = list(label_vars.keys())
         for j in [1,2,3,4]:
             sub_col += 1
-            #run OLS regression with cluster robust SE, grouping by school id
+            #run OLS regression with cluster robust SE, grouping by teacher id
             print(i,sub_col)
+            #cluster OLS on hold
+            """
             reg.cluster_ols(
                     outcome,
                     controls[f'c{j}'],
-                    grouping_var = f'g{i}schid',
+                    grouping_var = f'g{i}tchid',
             )
-            break
-        break
-    break
-        
+            """
+            reg.ols(outcome, controls[f'c{j}'])
+            if reg.pmc_check != True:
+                continue
+            for control in controls[f'c{j}']:
+                if 'small' in control:
+                    label_v = 'small'
+                elif 'aide' in control:
+                    label_v = 'aide'
+                else:
+                    label_v = control
+                if label_v in label_vars.keys():
+                    coef = reg.coef.loc[control][0]
+                    coef = round(coef,2)
+                    sub_table.loc[
+                            (label_vars[label_v], 'coef'),
+                            (label_super, sub_col),
+                    ] = coef
+                    se = reg.se.loc[control][0]
+                    se = round(se, 2)
+                    sub_table.loc[
+                            (label_vars[label_v], 'se'),
+                            (label_super, sub_col),
+                    ] = se
+                else:
+                    continue
+    sub_tables.append(sub_table)
 
+#concatenate sub_tables          
+table_v = pd.concat(sub_tables)
+
+#output table_v
+table_v.to_csv('tables_figures/table_V.csv')
+
+"""
+Table VII
+"""
 
 
 """

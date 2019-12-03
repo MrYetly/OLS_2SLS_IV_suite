@@ -187,6 +187,7 @@ class Regression():
                 dep = group_df[list(self.controls.columns)]
                 dep = dep.loc[list(out.index)]
                 X = np.matrix(dep.values)
+                print(X)
                 try:
                     M = (np.identity(X.shape[0]) - X*(X.T*X).I*X.T)
                     e_hat = M*y
@@ -282,16 +283,24 @@ class Regression():
            intercept = True
            ):
         #sort info into attributes
-        self.outcomes = self.dataframe[outcomes]
-        self.y = np.matrix(self.outcomes.values).T
         self.control_names = controls[:]
         self.nk_check = None
         self.pmc_check = None
         if intercept:
             self.intercept = True
-            self.dataframe.insert(0, 'intercept', 1)
             self.control_names.append('intercept')
-        self.controls = self.dataframe[self.control_names]
+            if 'intercept' not in list(self.dataframe.columns):
+                self.dataframe.insert(
+                        len(self.dataframe.columns),
+                        'intercept',
+                        1
+                )
+        #only include observations that have an outcome
+        outcomes = self.dataframe[outcomes]
+        outcomes = outcomes.loc[outcomes.notna() == True]
+        self.outcomes = outcomes
+        self.y = np.matrix(self.outcomes.values).T
+        self.controls = self.dataframe.loc[list(self.outcomes.index), self.control_names]
         self.X = np.matrix(self.controls.values)
         self.endog_name = endog
         self.endog = self.dataframe[self.endog_name]

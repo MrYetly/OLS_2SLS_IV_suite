@@ -341,7 +341,8 @@ for i in ['k', '1', '2', '3']:
 #1 obs affected in 3rd grade when blank pc dropped
 blank = data[f'g3classsize'].loc[data['g3_avg_pc'].notna() == True]
 blank = blank.loc[blank.isna() == True]
-blank['g3classsize'] = 21.0
+data.loc[blank.index, 'g3classsize'] = 21.0
+
 
 """
 Table I
@@ -742,7 +743,6 @@ sub_index = ['coef', 'se']
 multi_index = pd.MultiIndex.from_product([super_index, sub_index])
 table_vii = pd.DataFrame(
         columns = [
-                'Grade',
                 'OLS',
                 '2SLS',
                 'Sample Size',
@@ -751,6 +751,8 @@ table_vii = pd.DataFrame(
 )
 reg = Regression(data)
 for i in ['k','1','2','3']:
+    
+    #define variables
     controls = [
             f'g{i}classsize',
             'white/asian',
@@ -767,19 +769,39 @@ for i in ['k','1','2','3']:
             'small_init',
             'reg_init',
     ]
+    
+    #enter 2SLS calculations
     reg.iv(
             outcome,
             controls,
             endog = endog,
             instruments = instruments,
     )
-    break
+    if reg.pmc_check != True:
+        continue
+    coef = reg.coef.loc[f'g{i}classsize_fitted'][0]
+    coef = round(coef, 2)
+    table_vii.loc[(i, 'coef'), '2SLS'] = coef
+    se = reg.se.loc[f'g{i}classsize_fitted'][0]
+    se = round(se, 2)
+    table_vii.loc[(i, 'se'), '2SLS'] = se
+    n = reg.n
+    table_vii.loc[(i, 'coef'), 'Sample Size'] = n
+    print(i, '2sls')
+    #enter OLS calculations
+    reg.ols(outcome, controls)
+    if reg.pmc_check != True:
+        continue
+    coef = reg.coef.loc[f'g{i}classsize'][0]
+    coef = round(coef, 2)
+    table_vii.loc[(i, 'coef'), 'OLS'] = coef
+    se = reg.se.loc[f'g{i}classsize'][0]
+    se = round(se, 2)
+    table_vii.loc[(i, 'se'), 'OLS'] = se
+    print(i, 'ols')
 
-for col in reg.fs_controls.columns:
-        df = reg.fs_controls
-        blanks = df[col]
-        if blanks.count() != blanks.shape[0]:
-            print('Found')
+#export table
+table_vii.to_csv('tables_figures/table_VII.csv')
 
 """
 Figure 1

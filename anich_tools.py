@@ -340,7 +340,8 @@ class Regression():
             #begin first stage regression
             Z = self.Z 
             X_endog = np.matrix(self.endog.values).T
-
+            print(np.any(np.isnan(Z)))
+            print(np.any(np.isnan(X_endog)))
             #first stage coefficient
             B_fs = (Z.T*Z).I*Z.T*X_endog
             self.fs_coef = pd.DataFrame(
@@ -475,7 +476,8 @@ class Regression():
             self.groups = {}
             all_vars = self.controls_fitted.copy()
             all_vars.insert(0, self.outcomes.name, self.outcomes)
-            all_vars.insert(0, grouping_var, self.dataframe[grouping_var])
+            grouping_series = self.dataframe[grouping_var].loc[list(all_vars.index)]
+            all_vars.insert(0, grouping_var, grouping_series)
             group_list = list(
                     all_vars[grouping_var].loc[
                             all_vars[grouping_var].notna() == True
@@ -491,6 +493,7 @@ class Regression():
             Omega_hat = np.zeros((k,k))
             #for loop for Omega_hat summation
             for group, group_df in self.groups.items():
+                
                 X = np.matrix(group_df[list(self.controls_fitted.columns)].values)
                 y = np.matrix(group_df[self.outcomes.name].values).T
                 try:

@@ -1,2 +1,2 @@
 # OLS_2SLS_IV_suite
-Regression class (anich_tools.py) capable of OLS and 2SLS IV with clustered standard errors, and first stage f-tests, built using numpy and linear algebra. Application to replication of paper (Kreuger 1999)...
+This project was an econometric exercise. I built from scratch (more or less) a regression class (anich_tools.py) capable of OLS and 2SLS IV with clustered standard errors and first stage f-tests. The foundations of the class are numpy and my own knowledge of econometrics and linear algebra, with some help from sklearn for calculations using an f-distrubtion for the F-test. Application to replication of paper (Kreuger 1999).
